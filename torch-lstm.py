@@ -100,15 +100,15 @@ def lstm_run(X_train, X_test, y_train, y_test, epochs):
     )
 
     # 建模三件套：loss, 优化，epoch
-    model = LSTM(INPUT_SIZE, HIDDEN_LAYER_SIZE, OUTPUT_SIZE, NUM_LAYERS)  # 模型
+    model = LSTM(X_train.shape[2], HIDDEN_LAYER_SIZE, OUTPUT_SIZE, NUM_LAYERS)  # 模型
     loss_func = nn.BCELoss()  # loss
     # loss_func = nn.CrossEntropyLoss()  # loss
     optimizer = torch.optim.Adam(model.parameters(), lr=LR)  # 优化器
     prev_loss = 1000
 
     # 开始训练
-    model.train()
     for epoch in range(epochs):
+        model.train()
         for seq, labels in train_loader:
             # 清除网络先前的梯度值
             optimizer.zero_grad()
@@ -323,4 +323,3 @@ if __name__ == '__main__':
         epoch = 50 * i
         train(epoch,sample)
     # train(250,sample)
-
