@@ -2,7 +2,7 @@ import torch
 from torch import nn
 import torch.utils.data as Data
 from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import StratifiedKFold, train_test_split
+from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import accuracy_score, balanced_accuracy_score, confusion_matrix, roc_auc_score, f1_score
 from imblearn.under_sampling import RandomUnderSampler
 import numpy as np
@@ -22,7 +22,7 @@ NUM_LAYERS = 1
 LR = 1e-3
 EPOCHS = 50
 BATCH_SIZE = 15
-FOLD = 5
+FOLD = 10
 
 # 定义参数网格
 param_grid = {
@@ -31,24 +31,26 @@ param_grid = {
     # 'learning_rate': [0.001, 0.01],
     # 'batch_size': [8, 16, 32, 64],
     # 'epoch': [i for i in range(10, 100, 10)]
-    'epoch': [i for i in range(50, 600, 50)],
-    'hidden_size': [i for i in range(10,200,10)],
-    'num_layers': [1,2],
-    'batch_size': [8,16,32,64],
-    'learning_rate': [1,0.5,0.1,0.05,0.01,1e-3,1e-4,1e-5],
+    'hidden_size': [128],  # 6,32,64,128
+    'num_layers': [1],
+    'learning_rate': [0.001],  # 0.05,0.01,1e-3,1e-4
+    'batch_size': [32],  # 8,16,32,64
+    'epoch': [500],  # i for i in range(50, 300, 50)
+    'dropout_prob': [0.2]
 }
 
-file = 'result/LSTM-test/4-2-fold5.csv'
+file = f'result/LSTM-test/4-20-fold{FOLD}.csv'
+# file = 'result/LSTM-test/4-7-fold10.csv'
 
 best_val_accuracies = []
 best_epochs = []
 
 
-# key = eval(input('0. 训练模型\t1. 原有模型\n'))
+key = eval(input('0. 训练模型\t1. 保存的模型\n'))
 
 
 class LSTM(nn.Module):
-    def __init__(self, input_size=70, hidden_layer_size=100, output_size=1, num_layers=1):
+    def __init__(self, input_size=70, hidden_layer_size=100, output_size=1, num_layers=1, dropout_prob=0.2):
         '''
         LSTM二分类任务
         :param input_size: 输入数据的维度
@@ -59,6 +61,7 @@ class LSTM(nn.Module):
         self.hidden_layer_size = hidden_layer_size
         self.num_layers = num_layers
         self.lstm = nn.LSTM(input_size=input_size, hidden_size=hidden_layer_size, num_layers=num_layers)
+        self.dropout = nn.Dropout(dropout_prob)
         self.linear = nn.Linear(hidden_layer_size, output_size)
         self.sigmoid = nn.Sigmoid()
 
@@ -95,97 +98,9 @@ class LSTM(nn.Module):
         '''
         lstm_out, (h_n, h_c) = self.lstm(input_x, hidden_cell)
         linear_out = self.linear(lstm_out.view(len(input_x), -1))  # = self.linear(lstm_out[:,-1,:])
-        predictions = self.sigmoid(linear_out)
+        drop_out = self.dropout(linear_out)
+        predictions = self.sigmoid(drop_out)
         return predictions
-
-
-# def test_model(test_loader, model, loss_func):
-#     # 开始验证
-#     model.eval()
-#     total = 0
-#     correct = 0
-#     predicted = 0
-#     labels = 0
-#     '''
-#     总结with工作原理：
-#     （１）紧跟with后面的语句被求值后，返回对象的“–enter–()”方法被调用，这个方法的返回值将被赋值给as后面的变量；
-#     （２）当with后面的代码块全部被执行完之后，将调用前面返回对象的“–exit–()”方法。
-#     '''
-#     # with torch.no_grad():
-#     #     for inputs, labels in test_loader:
-#     #         # outputs = model(inputs)
-#     #         outputs = model(inputs).squeeze()
-#     #         predicted = (outputs > 0.5).float()
-#     #         total += labels.size(0)
-#     #         correct += (predicted == labels).sum().item()
-#     # with torch.no_grad():
-#     #     outputs = model(X_test).sequeeze()
-#     #     predicted = (outputs>0.5).float()
-#     #     total += y_test.size(0)
-#     #     correct += (predicted == y_test).sum().item()
-#     # accuracy = correct / total
-#     # print(f'测试精度: {accuracy * 100:.2f}%')
-#
-#     predicted_probs = []
-#     true_labels = []
-#
-#     test_epoch_loss = 0
-#
-#     with torch.no_grad():
-#         for inputs, labels in test_loader:
-#             outputs = model(inputs)
-#             predicted_probs.append(outputs.numpy())
-#             true_labels.append(labels.numpy())
-#
-#             y_pred = model(inputs)
-#             if y_pred.shape[0] == 1:
-#                 y_pred = y_pred[0]
-#             else:
-#                 y_pred = y_pred.squeeze()
-#             test_epoch_loss += loss_func(y_pred, labels).item()
-#
-#     predicted_probs = np.concatenate(predicted_probs).flatten()
-#     true_labels = np.concatenate(true_labels).flatten()
-#
-#     # Convert probabilities to binary predictions using a threshold (e.g., 0.5)
-#     threshold = 0.5
-#     predicted_labels = (predicted_probs > threshold).astype(int)
-#
-#     # return predicted, labels
-#     # return predicted, y_test
-#     return predicted_labels, true_labels, test_epoch_loss / len(test_loader)
-# def train_model(model, train_loader, test_loader, epochs, loss_func, optimizer):
-#     train_loss_list = []
-#     test_loss_list = []
-#     # 开始训练
-#     model.train()
-#     for epoch in range(epochs):
-#         train_epoch_loss, train_epoch_acc = 0.0, 0.0
-#         for seq, labels in train_loader:
-#             # 清除网络先前的梯度值
-#             optimizer.zero_grad()
-#             y_pred = model(seq)
-#             if y_pred.shape[0] == 1:
-#                 y_pred = y_pred[0]
-#             else:
-#                 y_pred = y_pred.squeeze()  # 压缩维度：得到输出，并将维度为1的去除
-#             # print('y_pred - ', y_pred, ',\tlabels - ', labels)
-#             single_loss = loss_func(y_pred, labels)
-#             # 若想获得类别，二分类问题使用四舍五入的方法即可：print(torch.round(y_pred))
-#             single_loss.backward()  # 调用backward()自动生成梯度
-#             optimizer.step()  # 使用optimizer.step()执行优化器，把梯度传播回每个网络
-#
-#             train_epoch_loss += loss_func(y_pred, labels).item()
-#         train_loss_list.append(train_epoch_loss / len(train_loader))
-#         y_pred, labels, test_loss = test_model(test_loader, model, loss_func)
-#         test_loss_list.append(test_loss)
-#         template = ("epoch:{:2d}, 训练损失:{:.5f}, 测试损失:{:.5f}")
-#
-#         print(template.format(epoch, train_epoch_loss / len(train_loader), test_loss))
-#
-#     return y_pred, labels, train_loss_list, test_loss_list
-
-# 计算平均值
 
 
 def means(list):
@@ -204,7 +119,7 @@ def std(list):
     return std_res
 
 
-def main(epoch, hidden_size, num_layers, batch_size, lr):
+def main(epoch, hidden_size, num_layers, batch_size, lr, dropout_prob):
     # 设定随机种子以保证结果的可复现性
     torch.manual_seed(seed)
     np.random.seed(seed)
@@ -237,7 +152,7 @@ def main(epoch, hidden_size, num_layers, batch_size, lr):
         X_train, X_test = train[train_index], train[test_index]
         Y_train, Y_test = np.array(label)[train_index], np.array(label)[test_index]
         _, predicted_labels, true_labels, model = train_eval(X_train, Y_train, X_test, Y_test, epoch, fold, hidden_size,
-                                                             num_layers, batch_size, lr)
+                                                             num_layers, batch_size, lr, dropout_prob)
 
         accuracy, balanced, sensitivity, specificity, auc, f1, tp, tn, fp, fn = confusion_compute(predicted_labels,
                                                                                                   true_labels)
@@ -280,7 +195,7 @@ def main(epoch, hidden_size, num_layers, batch_size, lr):
     std_result = std(all_list[:6])
 
     mid = tuple(str(mean_result[i]) + "±" + str(std_result[i]) for i in range(6)) + tuple(mean_result[6:]) + tuple(
-        [sample, epoch, FOLD, hidden_size, num_layers, batch_size, lr])
+        [sample, epoch, FOLD, hidden_size, num_layers, batch_size, lr, dropout_prob])
 
     final_result = [mid]
     if os.path.exists(file):
@@ -291,13 +206,13 @@ def main(epoch, hidden_size, num_layers, batch_size, lr):
                                      columns=['accuracy', 'balanced accuracy', 'sensitivity',
                                               'specificity', 'auc', 'f1',
                                               'tp', 'tn', 'fp', 'fn', 'sample y/n', 'EPOCHS', 'FOLD', 'hidden_size',
-                                              'num_layers', 'batch_size', 'lr'])
+                                              'num_layers', 'batch_size', 'lr', 'dropout_prob'])
         analyse_table.to_csv(file)
     return min(mean_result[:6]), best_model
 
 
 # 获取验证得到的y_pred和y_true
-def train_eval(X_train, Y_train, X_test, Y_test, num_epoch, f, hidden_size, num_layers, batch_size, lr):
+def train_eval(X_train, Y_train, X_test, Y_test, num_epoch, f, hidden_size, num_layers, batch_size, lr, dropout_prob):
     rus = RandomUnderSampler(random_state=seed)
     # 欠采样
     X_train, Y_train = rus.fit_resample(X_train, Y_train)
@@ -333,7 +248,8 @@ def train_eval(X_train, Y_train, X_test, Y_test, num_epoch, f, hidden_size, num_
     )
 
     # 建模三件套：loss, 优化，epoch
-    model = LSTM(X_train.shape[2], hidden_size, OUTPUT_SIZE, num_layers)  # 模型
+    model = LSTM(input_size=X_train.shape[2], hidden_layer_size=hidden_size, output_size=OUTPUT_SIZE,
+                 num_layers=num_layers, dropout_prob=dropout_prob)  # 模型
     loss_func = nn.BCELoss()  # loss
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)  # 优化器
     print(model)  # 查看网络结构
@@ -345,45 +261,45 @@ def train_eval(X_train, Y_train, X_test, Y_test, num_epoch, f, hidden_size, num_
 
     losses = []
 
-    # if key:
-    #     path = r'result/LSTM-test/state_dict_model_50.pth'
-    #     model.load_state_dict(torch.load(path))
-    # else:
-    # 训练模型
-    for epoch in range(num_epoch):
-        # 开始训练模型
-        model.train()
-        train_epoch_loss = 0.0
-        for x, y in train_loader:
-            optimizer.zero_grad()
-            y_pred = model(x)
-            single_loss = loss_func(y_pred, y)
+    if key:
+        path = r'result/fold-10/0.4599best_model.pth'
+        model.load_state_dict(torch.load(path))
+    else:
+        # 训练模型
+        for epoch in range(num_epoch):
+            # 开始训练模型
+            model.train()
+            train_epoch_loss = 0.0
+            for x, y in train_loader:
+                optimizer.zero_grad()
+                y_pred = model(x)
+                single_loss = loss_func(y_pred, y)
 
-            single_loss.backward()
-            optimizer.step()
+                single_loss.backward()
+                optimizer.step()
 
-            train_epoch_loss += single_loss.item()
-        losses.append(train_epoch_loss)
+                train_epoch_loss += single_loss.item()
+            losses.append(train_epoch_loss)
 
-        if epoch % 5 == 0:
-            model.eval()
-            val_epoch_loss = 0.0
-            with torch.no_grad():
-                test_preds = []
-                for x, y in test_loader:
-                    outputs = model(x)
-                    single_loss = loss_func(outputs, y)
-                    val_epoch_loss += single_loss.item()
-                    preds = torch.round(torch.sigmoid(outputs))
-                    test_preds.extend(preds.view(-1).tolist())
-                val_accuracy = accuracy_score(y_test.tolist(), test_preds)
-                print(
-                    f"Fold {f}, Epoch {epoch}, Train Loss {train_epoch_loss / len(train_loader)}, Validation Loss {val_epoch_loss / len(test_loader)}, Validation Accuracy: {val_accuracy}")
+            if epoch % 5 == 0:
+                model.eval()
+                val_epoch_loss = 0.0
+                with torch.no_grad():
+                    test_preds = []
+                    for x, y in test_loader:
+                        outputs = model(x)
+                        single_loss = loss_func(outputs, y)
+                        val_epoch_loss += single_loss.item()
+                        preds = torch.round(torch.sigmoid(outputs))
+                        test_preds.extend(preds.view(-1).tolist())
+                    val_accuracy = accuracy_score(y_test.tolist(), test_preds)
+                    print(
+                        f"Fold {f}, Epoch {epoch}, Train Loss {train_epoch_loss / len(train_loader)}, Validation Loss {val_epoch_loss / len(test_loader)}, Validation Accuracy: {val_accuracy}")
 
-                # 记录最佳验证准确率和对应的epoch
-                if (not best_val_accuracies) or (val_accuracy > max(best_val_accuracies)):
-                    best_val_accuracies.append(val_accuracy)
-                    best_epochs.append(epoch)
+                    # 记录最佳验证准确率和对应的epoch
+                    if (not best_val_accuracies) or (val_accuracy > max(best_val_accuracies)):
+                        best_val_accuracies.append(val_accuracy)
+                        best_epochs.append(epoch)
 
     # 训练结束后外部测试
     model.eval()
@@ -429,15 +345,6 @@ def confusion_compute(y_pred, labels):
     return accuracy_res, balanced_res, sensitivity_res, specificity_res, auc, f1, tp, tn, fp, fn
 
 
-def fit(epoch, loss_func, model, trainloader, testloader):
-    correct = 0  # 记录模型正确预测对了多少个样本
-    total = 0  # 总共对多少个样本进行了预测
-    running_loss = 0  # 累加每一个batch的loss
-    for seq, labels in trainloader:  # 返回的是每一个batch的数据
-        y_pred = model(seq)
-        loss = loss_func()
-
-
 if __name__ == '__main__':
     # for i in range(1, 8):
     #     epoch = 50 * i
@@ -459,23 +366,30 @@ if __name__ == '__main__':
             for lr in param_grid['learning_rate']:
                 for batch_size in param_grid['batch_size']:
                     for epoch in param_grid['epoch']:
-                        print(f'epoch: {epoch}, hidden_size: {hidden_size}, num_layers: {num_layers}, '
-                              f'batch_size: {batch_size}, learning_rate: {lr}')
-                        res, model = main(epoch, hidden_size, num_layers, batch_size, lr)
-                        if res > best_res:
-                            best_res = res
-                            best_model = model
-                            best_params = {
-                                'hidden_size': hidden_size,
-                                'num_layers': num_layers,
-                                'learning_rate': lr,
-                                'batch_size': batch_size,
-                                'epoch': epoch
-                            }
+                        for dropout_prob in param_grid['dropout_prob']:
+                            print('-' * 50, f'\nepoch: {epoch}, hidden_size: {hidden_size}, num_layers: {num_layers}, '
+                                            f'batch_size: {batch_size}, learning_rate: {lr}, dropout_prob: {dropout_prob}')
+                            res, model = main(epoch, hidden_size, num_layers, batch_size, lr, dropout_prob)
+                            print('min res: ', res)
+                            if res > best_res:
+                                best_res = res
+                                best_model = model
+                                best_params = {
+                                    'hidden_size': hidden_size,
+                                    'num_layers': num_layers,
+                                    'learning_rate': lr,
+                                    'batch_size': batch_size,
+                                    'epoch': epoch,
+                                    'fold': FOLD,
+                                    'dropout_prob': dropout_prob,
+                                }
 
+    dir = f'result/fold-{FOLD}/'
+    if not os.path.exists(dir):
+        os.makedirs(dir)
     # 保存最佳模型和参数
-    best_model_path = 'best_model.pth'
-    best_params_path = 'best_params.json'
+    best_model_path = os.path.join(dir, f'{best_res}best_model.pth')
+    best_params_path = os.path.join(dir, f'{best_res}best_params.json')
 
     torch.save(best_model.state_dict(), best_model_path)
     with open(best_params_path, 'w') as f:
@@ -483,9 +397,3 @@ if __name__ == '__main__':
 
     print(f"Best value: {best_res}")
     print(f"Best parameters: {best_params}")
-
-    # # 找到最佳阈值
-    # best_threshold_index = np.argmax(f1_scores)  # 获取最大F1分数的索引
-    # best_threshold = thresholds[best_threshold_index]  # 获取对应的阈值
-    #
-    # print(f"Best threshold: {best_threshold}")
